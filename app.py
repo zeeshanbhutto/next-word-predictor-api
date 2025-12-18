@@ -1,41 +1,61 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+import streamlit as st
 import torch
 import pickle
 from model import LSTMModel
 
-app = FastAPI(title="Next Word Predictor API")
+# Page config
+st.set_page_config(
+    page_title="Next Word Predictor",
+    page_icon="🔮",
+    layout="centered"
+)
 
-# Load vocab
-with open("vocab.pkl", "rb") as f:
-    vocab = pickle.load(f)
+st.title("🔮 Next Word Predictor")
+st.write("Enter a sentence and predict the **next word** using an LSTM model.")
 
-idx_to_word = {i: w for w, i in vocab.items()}
+# -------------------------
+# Load vocab and model
+# -------------------------
+@st.cache_resource
+def load_model():
+    with open("vocab.pkl", "rb") as f:
+        vocab = pickle.load(f)
 
-# Load model
-model = LSTMModel(vocab_size=len(vocab))
-model.load_state_dict(torch.load("model.pth", map_location="cpu"))
-model.eval()
+    idx_to_word = {i: w for w, i in vocab.items()}
 
-class InputText(BaseModel):
-    text: str
+    model = LSTMModel(vocab_size=len(vocab))
+    model.load_state_dict(torch.load("model.pth", map_location="cpu"))
+    model.eval()
 
-@app.get("/")
-def home():
-    return {"message": "Next Word Predictor API is Live 🚀"}
+    return model, vocab, idx_to_word
 
-@app.post("/predict")
-def predict(data: InputText):
-    tokens = data.text.split()
-    indices = [vocab.get(token, 0) for token in tokens]
 
-    x = torch.tensor(indices).unsqueeze(0)
+model, vocab, idx_to_word = load_model()
 
-    with torch.no_grad():
-        output = model(x)
-        predicted_idx = torch.argmax(output, dim=1).item()
+# -------------------------
+# User Input
+# -------------------------
+text = st.text_input(
+    "✍️ Enter your text:",
+    placeholder="e.g. deep learning is very"
+)
 
-    return {
-        "input_text": data.text,
-        "next_word": idx_to_word[predicted_idx]
-    }
+# -------------------------
+# Prediction
+# -------------------------
+if st.button("Predict Next Word 🚀"):
+    if not text.strip():
+        st.warning("Please enter some text.")
+    else:
+        tokens = text.split()
+        indices = [vocab.get(token, 0) for token in tokens]
+
+        x = torch.tensor(indices).unsqueeze(0)
+
+        with torch.no_grad():
+            output = model(x)
+            predicted_idx = torch.argmax(output, dim=1).item()
+
+        next_word = idx_to_word[predicted_idx]
+
+        st.success(f"**Predicted Next Word:** `{next_word}`")
